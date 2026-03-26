@@ -5,11 +5,10 @@
  */
 
 import { observer } from "mobx-react";
-// components
-import { BulkOperationsUpgradeBanner } from "@/components/issues/bulk-operations/upgrade-banner";
 // hooks
 import { useMultipleSelectStore } from "@/hooks/store/use-multiple-select-store";
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
+import { cn } from "@plane/utils";
 
 type Props = {
   className?: string;
@@ -23,5 +22,13 @@ export const IssueBulkOperationsRoot = observer(function IssueBulkOperationsRoot
 
   if (!isSelectionActive || selectionHelpers.isSelectionDisabled) return null;
 
-  return <BulkOperationsUpgradeBanner className={className} />;
+  return (
+    <div className={cn("sticky bottom-0 left-0 z-[2] grid h-14 place-items-center px-3.5", className)}>
+      <div className="flex h-10 w-full items-center justify-center rounded-md border border-subtle bg-layer-1 px-3.5 py-2">
+        <p className="text-sm text-secondary">
+          {selectionHelpers.getSelectedEntityIds().length} item(s) selected — bulk property update coming soon
+        </p>
+      </div>
+    </div>
+  );
 });

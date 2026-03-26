@@ -1,13 +1,13 @@
 #!/bin/bash
 
-BRANCH=${BRANCH:-master}
+BRANCH=${BRANCH:-preview}
 SCRIPT_DIR=$PWD
 SERVICE_FOLDER=plane-app
 PLANE_INSTALL_DIR=$PWD/$SERVICE_FOLDER
 export APP_RELEASE=stable
-export DOCKERHUB_USER=artifacts.plane.so/makeplane
+export DOCKERHUB_USER=ghcr.io/skila1
 export PULL_POLICY=${PULL_POLICY:-if_not_present}
-export GH_REPO=makeplane/plane
+export GH_REPO=Skila1/Plane
 export RELEASE_DOWNLOAD_URL="https://github.com/$GH_REPO/releases/download"
 export FALLBACK_DOWNLOAD_URL="https://raw.githubusercontent.com/$GH_REPO/$BRANCH/deployments/cli/community"
 
@@ -77,7 +77,7 @@ function initialize(){
         return 1
     fi
 
-    local IMAGE_NAME=makeplane/plane-proxy
+    local IMAGE_NAME=ghcr.io/skila1/plane-proxy
     local IMAGE_TAG=${APP_RELEASE}
     docker manifest inspect "${IMAGE_NAME}:${IMAGE_TAG}" | grep -q "\"architecture\": \"${CPU_ARCH}\"" &
     local pid=$!
@@ -185,17 +185,16 @@ function syncEnvFile(){
 function buildYourOwnImage(){
     echo "Building images locally..."
 
-    export DOCKERHUB_USER="myplane"
-    export APP_RELEASE="local"
-    export PULL_POLICY="never"
-    CUSTOM_BUILD="true"
+        export DOCKERHUB_USER="ghcr.io/skila1"
+        export APP_RELEASE="local"
+        export PULL_POLICY="never"
+        CUSTOM_BUILD="true"
 
-    # checkout the code to ~/tmp/plane folder and build the images
-    local PLANE_TEMP_CODE_DIR=~/tmp/plane
-    rm -rf $PLANE_TEMP_CODE_DIR
-    mkdir -p $PLANE_TEMP_CODE_DIR
-    REPO=https://github.com/$GH_REPO.git
-    git clone "$REPO" "$PLANE_TEMP_CODE_DIR"  --branch "$BRANCH" --single-branch --depth 1
+        local PLANE_TEMP_CODE_DIR=~/tmp/plane
+        rm -rf $PLANE_TEMP_CODE_DIR
+        mkdir -p $PLANE_TEMP_CODE_DIR
+        REPO=https://github.com/$GH_REPO.git
+        git clone "$REPO" "$PLANE_TEMP_CODE_DIR"  --branch "$BRANCH" --single-branch --depth 1
 
     cp "$PLANE_TEMP_CODE_DIR/deployments/cli/community/build.yml" "$PLANE_TEMP_CODE_DIR/build.yml"
 
@@ -303,7 +302,7 @@ function download() {
     syncEnvFile
 
     if [ "$LOCAL_BUILD" == "true" ]; then
-        export DOCKERHUB_USER="myplane"
+        export DOCKERHUB_USER="ghcr.io/skila1"
         export APP_RELEASE="local"
         export PULL_POLICY="never"
         CUSTOM_BUILD="true"
@@ -690,7 +689,7 @@ if [ -f "$DOCKER_ENV_PATH" ]; then
     CUSTOM_BUILD=$(getEnvValue "CUSTOM_BUILD" "$DOCKER_ENV_PATH")
 
     if [ -z "$DOCKERHUB_USER" ]; then
-        DOCKERHUB_USER=artifacts.plane.so/makeplane
+        DOCKERHUB_USER=ghcr.io/skila1
         updateEnvFile "DOCKERHUB_USER" "$DOCKERHUB_USER" "$DOCKER_ENV_PATH"
     fi
 
