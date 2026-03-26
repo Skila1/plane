@@ -3,23 +3,6 @@ name: Build and Push Images
 on:
   workflow_dispatch:
     inputs:
-      build_type:
-        description: "Type of build to run"
-        required: true
-        type: choice
-        default: "Build"
-        options:
-          - "Build"
-          - "Release"
-      releaseVersion:
-        description: "Release Version"
-        type: string
-        default: v0.0.0
-      isPrerelease:
-        description: "Is Pre-release"
-        type: boolean
-        default: false
-        required: true
       arm64:
         description: "Build for ARM64 architecture"
         required: false
@@ -42,63 +25,52 @@ env:
   REGISTRY: ghcr.io
   IMAGE_OWNER: skila1
   GH_REPO: Skila1/Plane
-  TARGET_BRANCH: ${{ github.ref_name }}
-  BUILD_TYPE: ${{ github.event.inputs.build_type }}
-  RELEASE_VERSION: ${{ github.event.inputs.releaseVersion }}
-  IS_PRERELEASE: ${{ github.event.inputs.isPrerelease }}
-  ARM64_BUILD: ${{ github.event.inputs.arm64 }}
-  AIO_BUILD: ${{ github.event.inputs.aio_build }}
 
 jobs:
   build_setup:
     name: Build Setup
     runs-on: ubuntu-22.04
     outputs:
-      gh_branch_name: ${{ steps.set_env.outputs.TARGET_BRANCH }}
       buildx_platforms: ${{ steps.set_env.outputs.BUILDX_PLATFORMS }}
-      build_type: ${{ steps.set_env.outputs.BUILD_TYPE }}
-      build_release: ${{ steps.set_env.outputs.BUILD_RELEASE }}
-      build_prerelease: ${{ steps.set_env.outputs.BUILD_PRERELEASE }}
-      release_version: ${{ steps.set_env.outputs.RELEASE_VERSION }}
-      aio_build: ${{ steps.set_env.outputs.AIO_BUILD }}
+      release_version: ${{ steps.version.outputs.VERSION }}
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - id: set_env
-        name: Set Environment Variables
+        name: Set Build Platforms
         run: |
-          if [ "${{ env.ARM64_BUILD }}" == "true" ] || ([ "${{ env.BUILD_TYPE }}" == "Release" ] && [ "${{ env.IS_PRERELEASE }}" != "true" ]); then
+          if [ "${{ github.event.inputs.arm64 }}" == "true" ]; then
             echo "BUILDX_PLATFORMS=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
           else
             echo "BUILDX_PLATFORMS=linux/amd64" >> $GITHUB_OUTPUT
           fi
 
-          BR_NAME=$(echo "${{ env.TARGET_BRANCH }}" | sed 's/[^a-zA-Z0-9.-]//g')
-          echo "TARGET_BRANCH=$BR_NAME" >> $GITHUB_OUTPUT
-
-          BUILD_RELEASE=false
-          BUILD_PRERELEASE=false
-          RELVERSION="latest"
-          BUILD_AIO=${{ env.AIO_BUILD }}
-
-          if [ "${{ env.BUILD_TYPE }}" == "Release" ]; then
-            FLAT_RELEASE_VERSION=$(echo "${{ env.RELEASE_VERSION }}" | sed 's/[^a-zA-Z0-9.-]//g')
-            semver_regex="^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*)?$"
-            if [[ ! $FLAT_RELEASE_VERSION =~ $semver_regex ]]; then
-              echo "Invalid Release Version: $FLAT_RELEASE_VERSION"
-              exit 1
-            fi
-            BUILD_RELEASE=true
-            RELVERSION=$FLAT_RELEASE_VERSION
-            if [ "${{ env.IS_PRERELEASE }}" == "true" ]; then
-              BUILD_PRERELEASE=true
-            fi
-            BUILD_AIO=true
+      - id: version
+        name: Auto-increment Version
+        run: |
+          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_VERSION="v1.0.0"
+          else
+            MAJOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f1)
+            MINOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f2)
+            PATCH=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f3)
+            PATCH=$((PATCH + 1))
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
           fi
+          echo "VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "Auto-incremented version: ${NEW_VERSION}"
 
-          echo "BUILD_TYPE=${{ env.BUILD_TYPE }}" >> $GITHUB_OUTPUT
-          echo "BUILD_RELEASE=${BUILD_RELEASE}" >> $GITHUB_OUTPUT
-          echo "BUILD_PRERELEASE=${BUILD_PRERELEASE}" >> $GITHUB_OUTPUT
-          echo "RELEASE_VERSION=${RELVERSION}" >> $GITHUB_OUTPUT
-          echo "AIO_BUILD=${BUILD_AIO}" >> $GITHUB_OUTPUT
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag ${{ steps.version.outputs.VERSION }}
+          git push origin ${{ steps.version.outputs.VERSION }}
 
   build_push_web:
     name: Build-Push Web
@@ -124,7 +96,7 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-frontend:${{ needs.build_setup.outputs.release_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-frontend:${{ needs.build_setup.outputs.gh_branch_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-frontend:latest
 
   build_push_space:
     name: Build-Push Space
@@ -150,7 +122,7 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-space:${{ needs.build_setup.outputs.release_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-space:${{ needs.build_setup.outputs.gh_branch_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-space:latest
 
   build_push_admin:
     name: Build-Push Admin
@@ -176,7 +148,7 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-admin:${{ needs.build_setup.outputs.release_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-admin:${{ needs.build_setup.outputs.gh_branch_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-admin:latest
 
   build_push_live:
     name: Build-Push Live
@@ -202,7 +174,7 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-live:${{ needs.build_setup.outputs.release_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-live:${{ needs.build_setup.outputs.gh_branch_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-live:latest
 
   build_push_api:
     name: Build-Push API
@@ -228,7 +200,7 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-backend:${{ needs.build_setup.outputs.release_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-backend:${{ needs.build_setup.outputs.gh_branch_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-backend:latest
 
   build_push_proxy:
     name: Build-Push Proxy
@@ -254,93 +226,9 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-proxy:${{ needs.build_setup.outputs.release_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-proxy:${{ needs.build_setup.outputs.gh_branch_name }}
-
-  build_push_aio:
-    if: ${{ needs.build_setup.outputs.aio_build == 'true' }}
-    name: Build-Push AIO
-    runs-on: ubuntu-22.04
-    needs:
-      - build_setup
-      - build_push_web
-      - build_push_space
-      - build_push_admin
-      - build_push_live
-      - build_push_api
-      - build_push_proxy
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Prepare AIO Assets
-        id: prepare_aio
-        run: |
-          cd deployments/aio/community
-          if [ "${{ needs.build_setup.outputs.build_type }}" == "Release" ]; then
-            aio_version=${{ needs.build_setup.outputs.release_version }}
-          else
-            aio_version=${{ needs.build_setup.outputs.gh_branch_name }}
-          fi
-          bash ./build.sh --release $aio_version
-          echo "AIO_BUILD_VERSION=${aio_version}" >> $GITHUB_OUTPUT
-
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: ./deployments/aio/community
-          file: ./deployments/aio/community/Dockerfile
-          platforms: ${{ needs.build_setup.outputs.buildx_platforms }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-aio-community:${{ needs.build_setup.outputs.release_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-aio-community:${{ needs.build_setup.outputs.gh_branch_name }}
-          build-args: |
-            PLANE_VERSION=${{ steps.prepare_aio.outputs.AIO_BUILD_VERSION }}
-
-  upload_build_assets:
-    name: Upload Build Assets
-    runs-on: ubuntu-22.04
-    needs:
-      - build_setup
-      - build_push_web
-      - build_push_space
-      - build_push_admin
-      - build_push_live
-      - build_push_api
-      - build_push_proxy
-    steps:
-      - uses: actions/checkout@v4
-      - name: Update Assets
-        run: |
-          if [ "${{ needs.build_setup.outputs.build_type }}" == "Release" ]; then
-            REL_VERSION=${{ needs.build_setup.outputs.release_version }}
-          else
-            REL_VERSION=${{ needs.build_setup.outputs.gh_branch_name }}
-          fi
-          cp ./deployments/cli/community/install.sh deployments/cli/community/setup.sh
-          sed -i 's/${APP_RELEASE:-stable}/${APP_RELEASE:-'${REL_VERSION}'}/g' deployments/cli/community/docker-compose.yml
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: community-assets
-          path: |
-            ./deployments/cli/community/setup.sh
-            ./deployments/cli/community/restore.sh
-            ./deployments/cli/community/restore-airgapped.sh
-            ./deployments/cli/community/docker-compose.yml
-            ./deployments/cli/community/variables.env
-            ./deployments/swarm/community/swarm.sh
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/plane-proxy:latest
 
   publish_release:
-    if: ${{ needs.build_setup.outputs.build_type == 'Release' }}
     name: Publish Release
     runs-on: ubuntu-22.04
     needs:
@@ -353,28 +241,12 @@ jobs:
       - build_push_proxy
     permissions:
       contents: write
-    env:
-      REL_VERSION: ${{ needs.build_setup.outputs.release_version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Update Assets
-        run: |
-          cp ./deployments/cli/community/install.sh deployments/cli/community/setup.sh
-          sed -i 's/${APP_RELEASE:-stable}/${APP_RELEASE:-'${REL_VERSION}'}/g' deployments/cli/community/docker-compose.yml
-
       - uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.REL_VERSION }}
-          name: ${{ env.REL_VERSION }}
-          draft: false
-          prerelease: ${{ env.IS_PRERELEASE }}
+          tag_name: ${{ needs.build_setup.outputs.release_version }}
+          name: ${{ needs.build_setup.outputs.release_version }}
           generate_release_notes: true
-          files: |
-            ${{ github.workspace }}/deployments/cli/community/setup.sh
-            ${{ github.workspace }}/deployments/cli/community/restore.sh
-            ${{ github.workspace }}/deployments/cli/community/restore-airgapped.sh
-            ${{ github.workspace }}/deployments/cli/community/docker-compose.yml
-            ${{ github.workspace }}/deployments/cli/community/variables.env
-            ${{ github.workspace }}/deployments/swarm/community/swarm.sh

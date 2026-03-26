@@ -163,8 +163,8 @@ class EmailCredentialCheckEndpoint(BaseAPIView):
                 {"error": "Network connection error. Please check your internet connection."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except Exception:
+        except Exception as e:
             return Response(
-                {"error": "Could not send email. Please check your configuration"},
+                {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )

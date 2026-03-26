@@ -35,10 +35,10 @@ def decrypt_data(encrypted_data):
     try:
         if encrypted_data:
             cipher_suite = Fernet(derive_key(settings.SECRET_KEY))
-            decrypted_data = cipher_suite.decrypt(encrypted_data.encode())  # Convert string back to bytes
+            decrypted_data = cipher_suite.decrypt(encrypted_data.encode())
             return decrypted_data.decode()
         else:
             return ""
     except Exception as e:
         log_exception(e)
-        return ""
+        return encrypted_data if encrypted_data else ""
