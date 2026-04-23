@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      version_override:
+        description: "Override version (e.g. v1.3.0). Leave empty to auto-increment."
+        required: false
+        default: ""
+        type: string
   push:
     branches:
       - preview
@@ -50,27 +55,36 @@ jobs:
           fi
 
       - id: version
-        name: Auto-increment Version
+        name: Determine Version
         run: |
-          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
-          if [ -z "$LATEST_TAG" ]; then
-            NEW_VERSION="v1.0.0"
+          OVERRIDE="${{ github.event.inputs.version_override }}"
+          if [ -n "$OVERRIDE" ]; then
+            NEW_VERSION="$OVERRIDE"
           else
-            MAJOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f1)
-            MINOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f2)
-            PATCH=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f3)
-            PATCH=$((PATCH + 1))
-            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+            if [ -z "$LATEST_TAG" ]; then
+              NEW_VERSION="v1.0.0"
+            else
+              MAJOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f1)
+              MINOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f2)
+              PATCH=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f3)
+              PATCH=$((PATCH + 1))
+              NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            fi
           fi
           echo "VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
-          echo "Auto-incremented version: ${NEW_VERSION}"
+          echo "Resolved version: ${NEW_VERSION}"
 
       - name: Create Git Tag
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git tag ${{ steps.version.outputs.VERSION }}
-          git push origin ${{ steps.version.outputs.VERSION }}
+          if git rev-parse "${{ steps.version.outputs.VERSION }}" >/dev/null 2>&1; then
+            echo "Tag ${{ steps.version.outputs.VERSION }} already exists, skipping tag creation"
+          else
+            git tag ${{ steps.version.outputs.VERSION }}
+            git push origin ${{ steps.version.outputs.VERSION }}
+          fi
 
   build_push_web:
     name: Build-Push Web
